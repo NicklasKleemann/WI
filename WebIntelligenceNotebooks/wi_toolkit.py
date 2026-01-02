@@ -53,41 +53,81 @@ if NLTK_AVAILABLE:
         """
         An extended PorterStemmer that prints the intermediate steps of the stemming algorithm.
         """
+        # Canonical Porter Stemmer rules for each step
+        STEP_RULES = {
+            '1a': [('sses', 'ss'), ('ies', 'i'), ('ss', 'ss'), ('s', '')],
+            '1b': [('eed', 'ee'), ('ed', ''), ('ing', '')],
+            '1c': [('y', 'i')],
+            '2': [
+                ('ational', 'ate'), ('tional', 'tion'), ('enci', 'ence'), ('anci', 'ance'),
+                ('izer', 'ize'), ('abli', 'able'), ('alli', 'al'), ('entli', 'ent'),
+                ('eli', 'e'), ('ousli', 'ous'), ('ization', 'ize'), ('ation', 'ate'),
+                ('ator', 'ate'), ('alism', 'al'), ('iveness', 'ive'), ('fulness', 'ful'),
+                ('ousness', 'ous'), ('aliti', 'al'), ('iviti', 'ive'), ('biliti', 'ble')
+            ],
+            '3': [
+                ('icate', 'ic'), ('ative', ''), ('alize', 'al'), ('iciti', 'ic'),
+                ('ical', 'ic'), ('ful', ''), ('ness', '')
+            ],
+            '4': [
+                ('al', ''), ('ance', ''), ('ence', ''), ('er', ''), ('ic', ''),
+                ('able', ''), ('ible', ''), ('ant', ''), ('ement', ''), ('ment', ''),
+                ('ent', ''), ('ion', ''), ('ou', ''), ('ism', ''), ('ate', ''),
+                ('iti', ''), ('ous', ''), ('ive', ''), ('ize', '')
+            ],
+            '5a': [('e', '')],
+            '5b': [('ll', 'l')]
+        }
+        
+        def _find_applied_rule(self, step_name, prev_stem, new_stem):
+            """Find which canonical rule was applied based on the transformation."""
+            if prev_stem == new_stem:
+                return None
+                
+            rules = self.STEP_RULES.get(step_name, [])
+            for old_suffix, new_suffix in rules:
+                # Check if prev_stem ends with old_suffix and new_stem ends with new_suffix
+                if prev_stem.endswith(old_suffix):
+                    # Verify the transformation matches
+                    base = prev_stem[:-len(old_suffix)] if old_suffix else prev_stem
+                    expected_new = base + new_suffix
+                    if expected_new == new_stem:
+                        return f"(m>0) {old_suffix.upper()} -> {new_suffix.upper() if new_suffix else '∅'}"
+            
+            # Fallback: deduce rule from suffix change
+            i = 0
+            min_len = min(len(prev_stem), len(new_stem))
+            while i < min_len and prev_stem[i] == new_stem[i]:
+                i += 1
+            old_suffix = prev_stem[i:]
+            new_suffix = new_stem[i:]
+            return f"{old_suffix.upper()} -> {new_suffix.upper() if new_suffix else '∅'}"
+        
         def stem(self, word):
             stem = word.lower()
             print(f"Original: {word}")
+            
+            def _apply_step(name, func, current_stem):
+                prev = current_stem
+                m = self._measure(current_stem) if hasattr(self, '_measure') else "?"
+                
+                new_stem = func(current_stem)
+                
+                if new_stem != prev:
+                    rule = self._find_applied_rule(name, prev, new_stem)
+                    print(f"Step {name:<3} : {prev:<15} -> {new_stem:<15} (m={m}, Rule: {rule})")
+                else:
+                    print(f"Step {name:<3} : {prev:<15} -> {new_stem:<15} (m={m})")
+                return new_stem
 
-            # Step 1a
-            stem = self._step1a(stem)
-            print(f"Step 1a : {stem}")
-
-            # Step 1b
-            stem = self._step1b(stem)
-            print(f"Step 1b : {stem}")
-
-            # Step 1c
-            stem = self._step1c(stem)
-            print(f"Step 1c : {stem}")
-
-            # Step 2
-            stem = self._step2(stem)
-            print(f"Step 2  : {stem}")
-
-            # Step 3
-            stem = self._step3(stem)
-            print(f"Step 3  : {stem}")
-
-            # Step 4
-            stem = self._step4(stem)
-            print(f"Step 4  : {stem}")
-
-            # Step 5a
-            stem = self._step5a(stem)
-            print(f"Step 5a : {stem}")
-
-            # Step 5b
-            stem = self._step5b(stem)
-            print(f"Step 5b : {stem}")
+            stem = _apply_step("1a", self._step1a, stem)
+            stem = _apply_step("1b", self._step1b, stem)
+            stem = _apply_step("1c", self._step1c, stem)
+            stem = _apply_step("2", self._step2, stem)
+            stem = _apply_step("3", self._step3, stem)
+            stem = _apply_step("4", self._step4, stem)
+            stem = _apply_step("5a", self._step5a, stem)
+            stem = _apply_step("5b", self._step5b, stem)
             
             print(f"Result  : {stem}\n" + "-"*20)
             return stem
