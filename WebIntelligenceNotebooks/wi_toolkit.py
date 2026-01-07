@@ -269,7 +269,7 @@ def clean_pipeline(text, remove_numbers=True, custom_stops=None, verbose=True):
 def edit_distance(s1, s2, verbose=True):
     """
     Levenshtein distance using dynamic programming.
-    Shows the full DP matrix.
+    Shows the full DP matrix and traces back the operations.
     """
     m, n = len(s1), len(s2)
     
@@ -319,45 +319,147 @@ def edit_distance(s1, s2, verbose=True):
             row_vals = "  ".join(str(v) for v in dp[i])
             print(f"  {row_char} {row_vals}")
         
+        # Traceback to find the operations
+        print(f"\n[Step 5] Traceback - Operations to transform '{s1}' → '{s2}':")
+        operations = _traceback_operations(dp, s1, s2)
+        current = s1
+        for step_num, (op_type, details, result) in enumerate(operations, 1):
+            print(f"  Step {step_num}: {op_type:12} {details:30} → '{result}'")
+            current = result
+        
+        if not operations:
+            print(f"  No operations needed - strings are identical!")
+        
         print(f"\n[RESULT] Levenshtein distance = {dp[m][n]}")
     
     return dp[m][n]
 
 
-def binary_distance(s1, s2, verbose=True):
+# Alias for standard name
+levenshtein_distance = edit_distance
+
+
+def _traceback_operations(dp, s1, s2):
+    """
+    Trace back through the DP matrix to find the sequence of operations.
+    Returns a list of (operation_type, details, resulting_string) tuples.
+    """
+    operations = []
+    i, j = len(s1), len(s2)
+    
+    # Build the result by working backwards, then reverse
+    # We'll track what the string looks like at each step
+    current = list(s1)
+    trace = []
+    
+    while i > 0 or j > 0:
+        if i > 0 and j > 0 and s1[i-1] == s2[j-1]:
+            # Characters match - no operation needed
+            i -= 1
+            j -= 1
+        elif i > 0 and j > 0 and dp[i][j] == dp[i-1][j-1] + 1:
+            # Substitution
+            trace.append(('SUBSTITUTE', i-1, s1[i-1], s2[j-1]))
+            i -= 1
+            j -= 1
+        elif j > 0 and dp[i][j] == dp[i][j-1] + 1:
+            # Insertion
+            trace.append(('INSERT', i, s2[j-1]))
+            j -= 1
+        elif i > 0 and dp[i][j] == dp[i-1][j] + 1:
+            # Deletion
+            trace.append(('DELETE', i-1, s1[i-1]))
+            i -= 1
+        else:
+            # Fallback (shouldn't happen with correct DP)
+            break
+    
+    # Reverse to get operations in forward order
+    trace.reverse()
+    
+    # Now apply operations in forward order to show the transformation
+    current = list(s1)
+    offset = 0  # Track position shifts due to insertions/deletions
+    
+    for op in trace:
+        if op[0] == 'SUBSTITUTE':
+            pos, old_char, new_char = op[1], op[2], op[3]
+            actual_pos = pos + offset
+            current[actual_pos] = new_char
+            details = f"'{old_char}' → '{new_char}' at position {pos}"
+            operations.append((op[0], details, ''.join(current)))
+        elif op[0] == 'INSERT':
+            pos, char = op[1], op[2]
+            actual_pos = pos + offset
+            current.insert(actual_pos, char)
+            offset += 1
+            details = f"'{char}' at position {pos}"
+            operations.append((op[0], details, ''.join(current)))
+        elif op[0] == 'DELETE':
+            pos, char = op[1], op[2]
+            actual_pos = pos + offset
+            del current[actual_pos]
+            offset -= 1
+            details = f"'{char}' from position {pos}"
+            operations.append((op[0], details, ''.join(current)))
+    
+    return operations
+
+
+def hamming_distance(s1, s2, verbose=True):
     """
     Hamming distance - number of positions with different characters.
     Strings must be same length.
     """
     if verbose:
-        print(f"\n[HAMMING DISTANCE]")
-        print(f"String 1: '{s1}' (length {len(s1)})")
-        print(f"String 2: '{s2}' (length {len(s2)})")
+        print(f"\n{'='*60}")
+        print(f"[HAMMING DISTANCE]")
+        print(f"{'='*60}")
+        print(f"\nFormula: H(s1, s2) = number of positions where s1[i] ≠ s2[i]")
+        print(f"\nInput:")
+        print(f"  String 1: '{s1}' (length {len(s1)})")
+        print(f"  String 2: '{s2}' (length {len(s2)})")
     
     if len(s1) != len(s2):
         if verbose:
-            print(f"[ERROR] Strings must have equal length!")
+            print(f"\n[ERROR] Strings must have equal length!")
         raise ValueError("Strings must have equal length for Hamming distance")
     
     if verbose:
-        print(f"\n[Step 1] Compare position by position:")
+        print(f"\n[Step 1] Align strings and compare position by position:")
+        print(f"")
+        print(f"  Position:  {' '.join(str(i) for i in range(len(s1)))}")
+        print(f"  String 1:  {' '.join(s1)}")
+        print(f"  String 2:  {' '.join(s2)}")
+        print(f"")
     
     distance = 0
+    mismatches = []
     for i, (c1, c2) in enumerate(zip(s1, s2)):
         match = c1 == c2
         if not match:
             distance += 1
+            mismatches.append(i)
         if verbose:
-            symbol = "✓" if match else "✗"
-            print(f"  Position {i}: '{c1}' vs '{c2}' -> {symbol}")
+            symbol = "✓ (match)" if match else "✗ (mismatch)"
+            print(f"  Position {i}: '{c1}' vs '{c2}' → {symbol}")
     
     if verbose:
-        print(f"\n[RESULT] Hamming distance = {distance}")
+        print(f"\n[Step 2] Count mismatches:")
+        print(f"  Mismatch positions: {mismatches if mismatches else 'none'}")
+        print(f"  Total mismatches: {distance}")
+        print(f"\n{'='*60}")
+        print(f"[RESULT] Hamming distance = {distance}")
+        print(f"{'='*60}")
     
     return distance
 
 
-def overlap_coefficient(set1, set2, verbose=True):
+# Alias for backwards compatibility
+binary_distance = hamming_distance
+
+
+def jaccard_similarity(set1, set2, verbose=True):
     """
     Jaccard similarity: |A ∩ B| / |A ∪ B|
     Works with any iterables (converts to sets).
@@ -368,31 +470,146 @@ def overlap_coefficient(set1, set2, verbose=True):
         set2 = set(set2)
     
     if verbose:
-        print(f"\n[JACCARD SIMILARITY]")
-        print(f"Set A: {set1}")
-        print(f"Set B: {set2}")
+        print(f"\n{'='*60}")
+        print(f"[JACCARD SIMILARITY]")
+        print(f"{'='*60}")
+        print(f"\nFormula: J(A,B) = |A ∩ B| / |A ∪ B|")
+        print(f"\nInput:")
+        print(f"  Set A: {sorted(set1) if all(isinstance(x, (int, float, str)) for x in set1) else set1}")
+        print(f"  Set B: {sorted(set2) if all(isinstance(x, (int, float, str)) for x in set2) else set2}")
     
     intersection = set1 & set2
     union = set1 | set2
     
     if verbose:
-        print(f"\n[Step 1] Intersection (A ∩ B): {intersection}")
-        print(f"[Step 2] Union (A ∪ B): {union}")
-        print(f"[Step 3] |A ∩ B| = {len(intersection)}")
-        print(f"[Step 4] |A ∪ B| = {len(union)}")
+        print(f"\n[Step 1] Find intersection (A ∩ B):")
+        print(f"  Elements in BOTH sets: {sorted(intersection) if intersection else '∅ (empty)'}")
+        print(f"  |A ∩ B| = {len(intersection)}")
+        
+        print(f"\n[Step 2] Find union (A ∪ B):")
+        print(f"  Elements in EITHER set: {sorted(union) if union else '∅ (empty)'}")
+        print(f"  |A ∪ B| = {len(union)}")
     
     if len(union) == 0:
         if verbose:
-            print(f"\n[RESULT] Both sets empty, Jaccard = 1.0")
+            print(f"\n[RESULT] Both sets empty, Jaccard similarity = 1.0 (by convention)")
         return 1.0
     
     jaccard = len(intersection) / len(union)
     
     if verbose:
-        print(f"\n[Step 5] Jaccard = {len(intersection)} / {len(union)} = {jaccard:.4f}")
+        print(f"\n[Step 3] Apply formula:")
+        print(f"  J(A,B) = |A ∩ B| / |A ∪ B|")
+        print(f"  J(A,B) = {len(intersection)} / {len(union)}")
+        print(f"  J(A,B) = {jaccard:.4f}")
+        print(f"\n{'='*60}")
         print(f"[RESULT] Jaccard similarity = {jaccard:.4f}")
+        print(f"{'='*60}")
     
     return jaccard
+
+
+# Alias for backwards compatibility
+overlap_coefficient = jaccard_similarity
+
+
+def jaccard_distance(set1, set2, verbose=True):
+    """
+    Jaccard distance: 1 - Jaccard similarity.
+    Works with any iterables (converts to sets).
+    """
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[JACCARD DISTANCE]")
+        print(f"{'='*60}")
+        print(f"\nFormula: d(A,B) = 1 - J(A,B) = 1 - |A ∩ B| / |A ∪ B|")
+        print(f"\n[Step 1] First compute Jaccard similarity:")
+    
+    similarity = jaccard_similarity(set1, set2, verbose=verbose)
+    distance = 1 - similarity
+    
+    if verbose:
+        print(f"\n[Step 2] Compute distance:")
+        print(f"  d(A,B) = 1 - J(A,B)")
+        print(f"  d(A,B) = 1 - {similarity:.4f}")
+        print(f"  d(A,B) = {distance:.4f}")
+        print(f"\n{'='*60}")
+        print(f"[RESULT] Jaccard distance = {distance:.4f}")
+        print(f"{'='*60}")
+    
+    return distance
+
+
+def euclidean_distance(v1, v2, verbose=True):
+    """
+    Euclidean distance between two vectors.
+    d(A,B) = sqrt(sum((a_i - b_i)^2))
+    Works with lists, tuples, or dicts.
+    """
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[EUCLIDEAN DISTANCE]")
+        print(f"{'='*60}")
+        print(f"\nFormula: d(A,B) = √Σ(aᵢ - bᵢ)²")
+    
+    # Handle dict input
+    if isinstance(v1, dict) and isinstance(v2, dict):
+        all_keys = sorted(set(v1.keys()) | set(v2.keys()))
+        v1_list = [v1.get(k, 0) for k in all_keys]
+        v2_list = [v2.get(k, 0) for k in all_keys]
+        if verbose:
+            print(f"\nInput (as dicts, keys: {all_keys}):")
+            print(f"  Vector A: {v1}")
+            print(f"  Vector B: {v2}")
+    else:
+        v1_list, v2_list = list(v1), list(v2)
+        if verbose:
+            print(f"\nInput:")
+            print(f"  Vector A: {v1_list}")
+            print(f"  Vector B: {v2_list}")
+    
+    n = len(v1_list)
+    if len(v1_list) != len(v2_list):
+        raise ValueError("Vectors must have the same dimension")
+    
+    if verbose:
+        print(f"  Dimensions: {n}")
+        print(f"\n[Step 1] Compute difference for each dimension:")
+    
+    differences = []
+    squared_diffs = []
+    for i, (a, b) in enumerate(zip(v1_list, v2_list)):
+        diff = a - b
+        sq_diff = diff ** 2
+        differences.append(diff)
+        squared_diffs.append(sq_diff)
+        if verbose:
+            print(f"  d{i+1} = a{i+1} - b{i+1} = {a} - {b} = {diff}")
+    
+    if verbose:
+        print(f"\n[Step 2] Square each difference:")
+        for i, (diff, sq) in enumerate(zip(differences, squared_diffs)):
+            print(f"  d{i+1}² = ({diff})² = {sq:.4f}")
+    
+    sum_sq = sum(squared_diffs)
+    
+    if verbose:
+        print(f"\n[Step 3] Sum of squared differences:")
+        sq_str = ' + '.join(f"{sq:.4f}" for sq in squared_diffs)
+        print(f"  Σ(dᵢ)² = {sq_str}")
+        print(f"  Σ(dᵢ)² = {sum_sq:.4f}")
+    
+    distance = math.sqrt(sum_sq)
+    
+    if verbose:
+        print(f"\n[Step 4] Take square root:")
+        print(f"  d(A,B) = √{sum_sq:.4f}")
+        print(f"  d(A,B) = {distance:.4f}")
+        print(f"\n{'='*60}")
+        print(f"[RESULT] Euclidean distance = {distance:.4f}")
+        print(f"{'='*60}")
+    
+    return distance
 
 
 # =============================================================================
@@ -402,37 +619,68 @@ def overlap_coefficient(set1, set2, verbose=True):
 def term_counts(documents, verbose=True):
     """
     Bag of Words / Count Vectorizer.
-    Returns term-document frequency matrix as dict of dicts.
+    Counts the frequency of each term in each document.
+    Returns (doc_counts, vocab) where doc_counts is a list of Counter objects.
     """
     if verbose:
-        print(f"\n[BAG OF WORDS] {len(documents)} documents")
+        print(f"\n{'='*60}")
+        print(f"[BAG OF WORDS / COUNT VECTORIZER]")
+        print(f"{'='*60}")
+        print(f"\nConcept: Represent each document as a vector of word counts")
+        print(f"\nInput: {len(documents)} documents")
     
     vocab = set()
     doc_counts = []
+    
+    if verbose:
+        print(f"\n[Step 1] Tokenize each document and count terms:")
     
     for i, doc in enumerate(documents):
         tokens = doc.lower().split() if isinstance(doc, str) else doc
         counts = Counter(tokens)
         doc_counts.append(counts)
         vocab.update(tokens)
+        if verbose:
+            preview = doc[:50] + "..." if len(str(doc)) > 50 else doc
+            print(f"  Doc {i}: '{preview}'")
+            print(f"         Tokens: {len(tokens)}, Unique: {len(counts)}")
+            top3 = counts.most_common(3)
+            print(f"         Top 3: {top3}")
     
     vocab = sorted(vocab)
+    
     if verbose:
-        print(f"  Vocabulary: {len(vocab)} unique terms")
-        for i, counts in enumerate(doc_counts):
-            top3 = counts.most_common(3)
-            print(f"  Doc {i}: {len(counts)} terms, top3: {top3}")
+        print(f"\n[Step 2] Build vocabulary (all unique terms):")
+        print(f"  Total unique terms: {len(vocab)}")
+        if len(vocab) <= 20:
+            print(f"  Vocabulary: {vocab}")
+        else:
+            print(f"  First 20: {vocab[:20]}...")
+        
+        print(f"\n{'='*60}")
+        print(f"[RESULT] {len(doc_counts)} document vectors, {len(vocab)} vocabulary size")
+        print(f"{'='*60}")
     
     return doc_counts, vocab
+
+
+# Aliases for discoverability
+bag_of_words = term_counts
+count_vectorizer = term_counts
 
 
 def build_td_matrix(documents, verbose=True):
     """
     Build term-document matrix.
     Rows = terms, Columns = documents.
+    Each cell [t][d] = count of term t in document d.
     """
     if verbose:
-        print(f"\n[TERM-DOCUMENT MATRIX]")
+        print(f"\n{'='*60}")
+        print(f"[TERM-DOCUMENT MATRIX]")
+        print(f"{'='*60}")
+        print(f"\nConcept: Matrix where rows=terms, columns=documents")
+        print(f"         Cell [term][doc] = frequency of term in document")
     
     doc_counts, vocab = term_counts(documents, verbose=False)
     
@@ -441,106 +689,340 @@ def build_td_matrix(documents, verbose=True):
         matrix[term] = [counts.get(term, 0) for counts in doc_counts]
     
     if verbose:
-        print(f"\n[Step 1] Vocabulary size: {len(vocab)}")
-        print(f"[Step 2] Number of documents: {len(documents)}")
+        print(f"\n[Step 1] Extract vocabulary: {len(vocab)} unique terms")
+        print(f"[Step 2] Create matrix: {len(vocab)} rows x {len(documents)} columns")
+        
         print(f"\n[Step 3] Term-Document Matrix:")
         header = "Term".ljust(15) + "  ".join(f"D{i}" for i in range(len(documents)))
         print(header)
         print("-" * len(header))
-        for term in vocab:
+        display_terms = vocab[:30] if len(vocab) > 30 else vocab
+        for term in display_terms:
             row = term.ljust(15) + "  ".join(str(v).rjust(2) for v in matrix[term])
             print(row)
+        if len(vocab) > 30:
+            print(f"  ... ({len(vocab) - 30} more terms)")
+        
+        print(f"\n{'='*60}")
+        print(f"[RESULT] Term-Document matrix: {len(vocab)} terms x {len(documents)} docs")
+        print(f"{'='*60}")
     
     return matrix, vocab
+
+
+# Alias
+term_document_matrix = build_td_matrix
+
+
+def compute_tf(document, verbose=True):
+    """
+    Compute Term Frequency (TF) for a single document.
+    TF(t,d) = count(t in d) / total terms in d
+    
+    Returns dict mapping each term to its TF value.
+    """
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[TERM FREQUENCY (TF)]")
+        print(f"{'='*60}")
+        print(f"\nFormula: TF(t,d) = count(t in d) / total_terms_in_d")
+        print(f"         (How often does term t appear in document d?)")
+    
+    tokens = document.lower().split() if isinstance(document, str) else list(document)
+    counts = Counter(tokens)
+    total = len(tokens)
+    
+    if verbose:
+        preview = str(document)[:60] + "..." if len(str(document)) > 60 else document
+        print(f"\nInput document: '{preview}'")
+        print(f"Total tokens: {total}")
+    
+    tf = {}
+    
+    if verbose:
+        print(f"\n[Step 1] Count each term:")
+    
+    for term in sorted(counts.keys()):
+        count = counts[term]
+        tf[term] = count / total if total > 0 else 0
+        if verbose:
+            print(f"  '{term}': count={count}, TF = {count}/{total} = {tf[term]:.4f}")
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[RESULT] TF computed for {len(tf)} unique terms")
+        print(f"{'='*60}")
+    
+    return tf
+
+
+# Alias
+term_frequency = compute_tf
+
+
+def compute_df(documents, verbose=True):
+    """
+    Compute Document Frequency (DF) for each term in a corpus.
+    DF(t) = number of documents containing term t
+    
+    Returns dict mapping each term to its DF value.
+    """
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[DOCUMENT FREQUENCY (DF)]")
+        print(f"{'='*60}")
+        print(f"\nFormula: DF(t) = number of documents containing term t")
+        print(f"         (In how many documents does term t appear?)")
+        print(f"\nInput: {documents}")
+    
+    doc_counts, vocab = term_counts(documents, verbose=False)
+    
+    df = {}
+    
+    if verbose:
+        print(f"\n[Step 1] For each term, count documents containing it:")
+    
+    for term in sorted(vocab):
+        doc_count = sum(1 for counts in doc_counts if term in counts)
+        df[term] = doc_count
+        if verbose:
+            docs_with_term = [i for i, counts in enumerate(doc_counts) if term in counts]
+            print(f"  '{term}': appears in docs {docs_with_term}, DF = {doc_count}")
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[RESULT] DF computed for {len(df)} terms across {len(documents)} docs")
+        print(f"{'='*60}")
+    
+    return df
+
+
+# Alias
+document_frequency = compute_df
+
+
+def compute_idf(documents, verbose=True):
+    """
+    Compute Inverse Document Frequency (IDF) for each term in a corpus.
+    IDF(t) = log(N / DF(t)) where N = total number of documents
+    
+    Rare terms get higher IDF (more discriminative).
+    Common terms get lower IDF (less discriminative).
+    
+    Returns dict mapping each term to its IDF value.
+    """
+    N = len(documents)
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[INVERSE DOCUMENT FREQUENCY (IDF)]")
+        print(f"{'='*60}")
+        print(f"\nFormula: IDF(t) = log(N / DF(t))")
+        print(f"         where N = total documents = {N}")
+        print(f"\nIntuition: Rare terms -> high IDF (important)")
+        print(f"           Common terms -> low IDF (less important)")
+    
+    df = compute_df(documents, verbose=False)
+    
+    idf = {}
+    
+    if verbose:
+        print(f"\n[Step 1] Compute IDF for each term:")
+        print(f"{'Term':<15} {'DF':>4} {'N/DF':>8} {'IDF=log(N/DF)':>12}")
+        print("-" * 45)
+    
+    for term in sorted(df.keys()):
+        df_val = df[term]
+        ratio = N / df_val if df_val > 0 else 0
+        idf[term] = math.log(ratio) if ratio > 0 else 0
+        if verbose:
+            print(f"  {term:<13} {df_val:>4} {ratio:>8.2f} {idf[term]:>12.4f}")
+    
+    if verbose:
+        # Show interpretation
+        sorted_by_idf = sorted(idf.items(), key=lambda x: x[1], reverse=True)
+        print(f"\n[Step 2] Interpretation:")
+        print(f"  Most discriminative (highest IDF): {sorted_by_idf[:3]}")
+        print(f"  Least discriminative (lowest IDF): {sorted_by_idf[-3:]}")
+        
+        print(f"\n{'='*60}")
+        print(f"[RESULT] IDF computed for {len(idf)} terms")
+        print(f"{'='*60}")
+    
+    return idf
+
+
+# Alias
+inverse_document_frequency = compute_idf
 
 
 def compute_tfidf(documents, verbose=True):
     """
     Compute TF-IDF scores for a corpus.
-    TF = term frequency in document
-    IDF = log(N / df) where df = number of docs containing term
+    TF-IDF(t,d) = TF(t,d) * IDF(t)
+    
+    Combines term frequency (local importance) with inverse document frequency
+    (global importance across corpus).
+    
+    Returns (tfidf_vectors, vocab, idf_values).
     """
-    if verbose:
-        print(f"\n[TF-IDF CALCULATION] {len(documents)} documents")
-    
     N = len(documents)
-    doc_counts, vocab = term_counts(documents, verbose=False)
     
-    # Calculate document frequency for each term
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[TF-IDF: TERM FREQUENCY - INVERSE DOCUMENT FREQUENCY]")
+        print(f"{'='*60}")
+        print(f"\nFormula: TF-IDF(t,d) = TF(t,d) * IDF(t)")
+        print(f"         where TF(t,d) = count(t,d) / total_terms_in_d")
+        print(f"               IDF(t)  = log(N / DF(t))")
+        print(f"\nIntuition: High TF-IDF = term frequent in this doc, rare in corpus")
+        print(f"\nInput: {N} documents")
+    
+    doc_counts, vocab = term_counts(documents, verbose=True)
+    
+    # Step 1: Compute DF
+    if verbose:
+        print(f"\n[Step 1] Compute Document Frequency (DF):")
+    
     df = {}
     for term in vocab:
         df[term] = sum(1 for counts in doc_counts if term in counts)
     
-    # Calculate IDF
+    if verbose:
+        for term in sorted(vocab)[:10]:
+            print(f"  DF('{term}') = {df[term]}")
+        if len(vocab) > 10:
+            print(f"  ... ({len(vocab) - 10} more terms)")
+    
+    # Step 2: Compute IDF
+    if verbose:
+        print(f"\n[Step 2] Compute Inverse Document Frequency (IDF):")
+    
     idf = {}
     for term in vocab:
         idf[term] = math.log(N / df[term]) if df[term] > 0 else 0
     
     if verbose:
-        print(f"\n[Step 1-2] Document Frequency & IDF (top 20 terms):")
-        print(f"{'Term':<15} {'df':>4} {'IDF':>8}")
-        print("-" * 30)
-        sorted_terms = sorted(vocab, key=lambda t: idf[t], reverse=True)[:20]
-        for term in sorted_terms:
-            print(f"{term:<15} {df[term]:>4} {idf[term]:>8.4f}")
+        for term in sorted(vocab)[:10]:
+            print(f"  IDF('{term}') = log({N}/{df[term]}) = {idf[term]:.4f}")
+        if len(vocab) > 10:
+            print(f"  ... ({len(vocab) - 10} more terms)")
     
-    # Calculate TF-IDF for each document
+    # Step 3: Compute TF for each document
+    if verbose:
+        print(f"\n[Step 3] Compute TF-IDF for each document:")
+    
     tfidf = []
     for i, counts in enumerate(doc_counts):
         doc_len = sum(counts.values())
         doc_tfidf = {}
+        
+        if verbose:
+            print(f"\n  Document {i} ({doc_len} tokens):")
+        
         for term in vocab:
-            tf = counts.get(term, 0) / doc_len if doc_len > 0 else 0
-            doc_tfidf[term] = tf * idf[term]
+            count = counts.get(term, 0)
+            tf = count / doc_len if doc_len > 0 else 0
+            tfidf_val = tf * idf[term]
+            doc_tfidf[term] = tfidf_val
+            
+            if verbose and count > 0:
+                print(f"    '{term}': TF={count}/{doc_len}={tf:.4f}, IDF={idf[term]:.4f}, TF-IDF={tfidf_val:.4f}")
+        
         tfidf.append(doc_tfidf)
     
     if verbose:
-        print(f"\n[Step 3] TF-IDF Matrix (top terms per doc):")
+        print(f"\n[Step 4] Summary - Top TF-IDF terms per document:")
         for i, doc_tfidf in enumerate(tfidf):
             top_terms = sorted(doc_tfidf.items(), key=lambda x: x[1], reverse=True)[:5]
             terms_str = ", ".join(f"{t}:{s:.3f}" for t, s in top_terms if s > 0)
             print(f"  Doc {i}: {terms_str}")
+        
+        print(f"\n{'='*60}")
+        print(f"[RESULT] TF-IDF computed for {len(documents)} docs, {len(vocab)} terms")
+        print(f"{'='*60}")
     
     return tfidf, vocab, idf
 
 
-def vector_similarity(v1, v2, verbose=True):
+# Alias
+tfidf = compute_tfidf
+
+
+def cosine_similarity(v1, v2, verbose=True):
     """
     Cosine similarity between two vectors (as dicts or lists).
     cos(A,B) = (A·B) / (||A|| × ||B||)
     """
     if verbose:
-        print(f"\n[COSINE SIMILARITY]")
+        print(f"\n{'='*60}")
+        print(f"[COSINE SIMILARITY]")
+        print(f"{'='*60}")
+        print(f"\nFormula: cos(θ) = (A·B) / (||A|| × ||B||)")
+        print(f"         where A·B = Σ(aᵢ × bᵢ)  and  ||A|| = √Σ(aᵢ)²")
     
     # Handle dict input
     if isinstance(v1, dict) and isinstance(v2, dict):
-        all_keys = set(v1.keys()) | set(v2.keys())
+        all_keys = sorted(set(v1.keys()) | set(v2.keys()))
         v1_list = [v1.get(k, 0) for k in all_keys]
         v2_list = [v2.get(k, 0) for k in all_keys]
         if verbose:
-            print(f"Vector 1: {v1}")
-            print(f"Vector 2: {v2}")
+            print(f"\nInput (as dicts, keys: {all_keys}):")
+            print(f"  Vector A: {v1}")
+            print(f"  Vector B: {v2}")
     else:
         v1_list, v2_list = list(v1), list(v2)
         if verbose:
-            print(f"Vector 1: {v1_list}")
-            print(f"Vector 2: {v2_list}")
+            print(f"\nInput:")
+            print(f"  Vector A: {v1_list}")
+            print(f"  Vector B: {v2_list}")
     
-    # Dot product
-    dot = sum(a * b for a, b in zip(v1_list, v2_list))
+    n = len(v1_list)
+    
+    # Dot product step by step
     if verbose:
-        print(f"\n[Step 1] Dot product A·B:")
-        terms = [f"{a:.4f}×{b:.4f}" for a, b in zip(v1_list, v2_list)]
-        print(f"  {' + '.join(terms[:5])}{'...' if len(terms) > 5 else ''}")
-        print(f"  = {dot:.4f}")
+        print(f"\n[Step 1] Compute dot product (A·B):")
     
-    # Magnitudes
-    mag1 = math.sqrt(sum(a * a for a in v1_list))
-    mag2 = math.sqrt(sum(b * b for b in v2_list))
+    products = []
+    for i, (a, b) in enumerate(zip(v1_list, v2_list)):
+        prod = a * b
+        products.append(prod)
+        if verbose:
+            print(f"  a{i+1} × b{i+1} = {a} × {b} = {prod:.4f}")
+    
+    dot = sum(products)
+    if verbose:
+        prod_str = ' + '.join(f"{p:.4f}" for p in products)
+        print(f"  A·B = {prod_str}")
+        print(f"  A·B = {dot:.4f}")
+    
+    # Magnitude A step by step
+    if verbose:
+        print(f"\n[Step 2] Compute magnitude ||A||:")
+    
+    sq_a = [a * a for a in v1_list]
+    sum_sq_a = sum(sq_a)
+    mag1 = math.sqrt(sum_sq_a)
     
     if verbose:
-        print(f"\n[Step 2] Magnitude ||A|| = sqrt(sum of squares) = {mag1:.4f}")
-        print(f"[Step 3] Magnitude ||B|| = sqrt(sum of squares) = {mag2:.4f}")
+        for i, (a, sq) in enumerate(zip(v1_list, sq_a)):
+            print(f"  a{i+1}² = {a}² = {sq:.4f}")
+        print(f"  Σ(aᵢ)² = {sum_sq_a:.4f}")
+        print(f"  ||A|| = √{sum_sq_a:.4f} = {mag1:.4f}")
+    
+    # Magnitude B step by step
+    if verbose:
+        print(f"\n[Step 3] Compute magnitude ||B||:")
+    
+    sq_b = [b * b for b in v2_list]
+    sum_sq_b = sum(sq_b)
+    mag2 = math.sqrt(sum_sq_b)
+    
+    if verbose:
+        for i, (b, sq) in enumerate(zip(v2_list, sq_b)):
+            print(f"  b{i+1}² = {b}² = {sq:.4f}")
+        print(f"  Σ(bᵢ)² = {sum_sq_b:.4f}")
+        print(f"  ||B|| = √{sum_sq_b:.4f} = {mag2:.4f}")
     
     if mag1 == 0 or mag2 == 0:
         if verbose:
@@ -550,10 +1032,20 @@ def vector_similarity(v1, v2, verbose=True):
     similarity = dot / (mag1 * mag2)
     
     if verbose:
-        print(f"\n[Step 4] Cosine = {dot:.4f} / ({mag1:.4f} × {mag2:.4f})")
+        print(f"\n[Step 4] Apply formula:")
+        print(f"  cos(θ) = (A·B) / (||A|| × ||B||)")
+        print(f"  cos(θ) = {dot:.4f} / ({mag1:.4f} × {mag2:.4f})")
+        print(f"  cos(θ) = {dot:.4f} / {mag1 * mag2:.4f}")
+        print(f"  cos(θ) = {similarity:.4f}")
+        print(f"\n{'='*60}")
         print(f"[RESULT] Cosine similarity = {similarity:.4f}")
+        print(f"{'='*60}")
     
     return similarity
+
+
+# Alias for backwards compatibility
+vector_similarity = cosine_similarity
 
 
 def pairwise_scores(tfidf_vectors, labels=None, verbose=True):
@@ -610,24 +1102,38 @@ def rank_pairs(similarity_results, verbose=True):
 def extract_ngrams(tokens, n, verbose=True):
     """
     Generate n-grams from a token list.
+    An n-gram is a contiguous sequence of n items from a text.
     """
     if isinstance(tokens, str):
         tokens = tokens.split()
     
     if verbose:
-        print(f"\n[N-GRAM EXTRACTION]")
-        print(f"Tokens: {tokens}")
-        print(f"N = {n}")
+        print(f"\n{'='*60}")
+        print(f"[N-GRAM EXTRACTION]")
+        print(f"{'='*60}")
+        print(f"\nDefinition: An n-gram is a sequence of n consecutive tokens")
+        print(f"  - Unigram (n=1): single words")
+        print(f"  - Bigram (n=2): pairs of words")
+        print(f"  - Trigram (n=3): triples of words")
+        print(f"\nInput tokens: {tokens}")
+        print(f"N = {n} ({['unigram', 'bigram', 'trigram', f'{n}-gram'][min(n-1, 3)]})")
     
     ngrams = []
+    
+    if verbose:
+        print(f"\n[Step 1] Slide window of size {n} across tokens:")
+    
     for i in range(len(tokens) - n + 1):
         ngram = tuple(tokens[i:i + n])
         ngrams.append(ngram)
         if verbose:
-            print(f"  Position {i}: {ngram}")
+            window = ' '.join(f"[{tokens[j]}]" if i <= j < i+n else tokens[j] for j in range(len(tokens)))
+            print(f"  Position {i}: {window} -> {ngram}")
     
     if verbose:
-        print(f"\n[RESULT] {len(ngrams)} {n}-grams generated")
+        print(f"\n{'='*60}")
+        print(f"[RESULT] {len(ngrams)} {n}-grams generated")
+        print(f"{'='*60}")
     
     return ngrams
 
@@ -635,49 +1141,83 @@ def extract_ngrams(tokens, n, verbose=True):
 def ngram_counts(corpus, n, verbose=True):
     """
     Count n-gram frequencies in a corpus.
-    Corpus can be list of sentences (strings or token lists).
+    Adds <s> start tokens and </s> end tokens for language modeling.
+    
+    Returns (counts, context_counts) where:
+    - counts: Counter of n-gram frequencies
+    - context_counts: Counter of (n-1)-gram context frequencies
     """
     if verbose:
-        print(f"\n[N-GRAM COUNTING]")
-        print(f"Corpus size: {len(corpus)} sentences")
-        print(f"N = {n}")
+        print(f"\n{'='*60}")
+        print(f"[N-GRAM COUNTING]")
+        print(f"{'='*60}")
+        print(f"\nConcept: Count how often each n-gram appears in the corpus")
+        print(f"         Also count contexts (n-1 grams) for probability calculation")
+        print(f"\nInput: {len(corpus)} sentences, n = {n}")
     
     counts = Counter()
-    context_counts = Counter()  # for (n-1)-grams
+    context_counts = Counter()
+    
+    if verbose:
+        print(f"\n[Step 1] Process each sentence (with <s> and </s> markers):")
     
     for i, sent in enumerate(corpus):
         tokens = sent.lower().split() if isinstance(sent, str) else sent
         # Add start/end tokens
-        tokens = ['<s>'] * (n - 1) + tokens + ['</s>']
+        padded = ['<s>'] * (n - 1) + tokens + ['</s>']
         
         if verbose:
-            print(f"\n[Sentence {i}] {tokens}")
+            print(f"\n  Sentence {i}: \"{sent}\"")
+            print(f"  Padded: {padded}")
         
-        ngrams = extract_ngrams(tokens, n, verbose=False)
+        ngrams = extract_ngrams(padded, n, verbose=False)
+        
+        if verbose:
+            print(f"  N-grams extracted: {ngrams}")
+        
         for ng in ngrams:
             counts[ng] += 1
             context = ng[:-1]
             context_counts[context] += 1
-        
-        if verbose:
-            print(f"  {n}-grams: {ngrams}")
     
     if verbose:
-        print(f"\n[RESULT] N-gram counts:")
+        print(f"\n[Step 2] N-gram frequency table:")
+        print(f"  {'N-gram':<30} {'Count':>6}")
+        print(f"  {'-'*36}")
         for ng, c in counts.most_common():
-            print(f"  {ng}: {c}")
+            print(f"  {str(ng):<30} {c:>6}")
+        
+        print(f"\n[Step 3] Context frequency table:")
+        print(f"  {'Context':<25} {'Count':>6}")
+        print(f"  {'-'*31}")
+        for ctx, c in context_counts.most_common():
+            print(f"  {str(ctx):<25} {c:>6}")
+        
+        print(f"\n{'='*60}")
+        print(f"[RESULT] {len(counts)} unique n-grams, {len(context_counts)} unique contexts")
+        print(f"{'='*60}")
     
     return counts, context_counts
 
 
+# Alias for discoverability
+count_ngrams = ngram_counts
+
+
 def estimate_prob(ngram, counts, context_counts, verbose=True):
     """
-    Maximum Likelihood Estimation for n-gram probability.
-    P(word | context) = count(ngram) / count(context)
+    Maximum Likelihood Estimation (MLE) for n-gram probability.
+    
+    Formula: P(word | context) = count(context + word) / count(context)
+    
+    This is the probability of seeing 'word' given we've seen 'context'.
     """
     if verbose:
-        print(f"\n[MLE PROBABILITY]")
-        print(f"N-gram: {ngram}")
+        print(f"\n{'='*60}")
+        print(f"[MAXIMUM LIKELIHOOD ESTIMATION (MLE)]")
+        print(f"{'='*60}")
+        print(f"\nFormula: P(w | context) = C(context, w) / C(context)")
+        print(f"         where C(x) = count of x in training corpus")
     
     context = ngram[:-1]
     word = ngram[-1]
@@ -686,56 +1226,246 @@ def estimate_prob(ngram, counts, context_counts, verbose=True):
     context_count = context_counts.get(context, 0)
     
     if verbose:
-        print(f"[Step 1] Context: {context}")
-        print(f"[Step 2] Word: '{word}'")
-        print(f"[Step 3] Count({ngram}) = {ngram_count}")
-        print(f"[Step 4] Count({context}) = {context_count}")
+        print(f"\nInput n-gram: {ngram}")
+        print(f"\n[Step 1] Split into context and target word:")
+        print(f"  Context: {context}")
+        print(f"  Target word: '{word}'")
+        
+        print(f"\n[Step 2] Look up counts in training data:")
+        print(f"  C({ngram}) = {ngram_count}")
+        print(f"  C({context}) = {context_count}")
     
     if context_count == 0:
         prob = 0.0
         if verbose:
-            print(f"[RESULT] P({word}|{context}) = 0 (context not seen)")
+            print(f"\n[Step 3] Context never seen in training data!")
+            print(f"  P('{word}' | {context}) = 0")
     else:
         prob = ngram_count / context_count
         if verbose:
-            print(f"[Step 5] P({word}|{context}) = {ngram_count}/{context_count} = {prob:.4f}")
+            print(f"\n[Step 3] Apply MLE formula:")
+            print(f"  P('{word}' | {context}) = C({ngram}) / C({context})")
+            print(f"  P('{word}' | {context}) = {ngram_count} / {context_count}")
+            print(f"  P('{word}' | {context}) = {prob:.4f}")
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[RESULT] P('{word}' | {context}) = {prob:.4f}")
+        print(f"{'='*60}")
     
     return prob
 
 
+# Aliases for discoverability
+maximum_likelihood = estimate_prob
+mle_probability = estimate_prob
+
+
+def show_ngram_probabilities(context, counts, context_counts, top_k=10, verbose=True):
+    """
+    Show probability distribution of next words given a context.
+    Displays a visual bar chart of the most likely continuations.
+    
+    Args:
+        context: tuple of words, e.g., ('the',) for bigram or ('the', 'cat') for trigram
+        counts: n-gram counts from ngram_counts()
+        context_counts: context counts from ngram_counts()
+        top_k: show top k most likely words
+    """
+    if isinstance(context, str):
+        context = tuple(context.split())
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"[NEXT WORD PROBABILITY DISTRIBUTION]")
+        print(f"{'='*60}")
+        print(f"\nContext: {context}")
+    
+    context_count = context_counts.get(context, 0)
+    
+    if context_count == 0:
+        if verbose:
+            print(f"\n[ERROR] Context '{context}' not found in training data!")
+        return {}
+    
+    if verbose:
+        print(f"Context count: {context_count}")
+        print(f"\n[Step 1] Find all n-grams starting with this context:")
+    
+    # Find all ngrams that start with this context
+    next_words = {}
+    for ngram, count in counts.items():
+        if ngram[:-1] == context:
+            word = ngram[-1]
+            prob = count / context_count
+            next_words[word] = (count, prob)
+    
+    # Sort by probability
+    sorted_words = sorted(next_words.items(), key=lambda x: x[1][1], reverse=True)
+    
+    if verbose:
+        print(f"\n[Step 2] Compute P(w | context) = C(context, w) / C(context):")
+        print(f"\n  {'Next Word':<15} {'Count':>6} {'Probability':>12} {'Visualization'}")
+        print(f"  {'-'*60}")
+        
+        max_prob = sorted_words[0][1][1] if sorted_words else 1.0
+        
+        for word, (count, prob) in sorted_words[:top_k]:
+            bar_length = int(30 * prob / max_prob) if max_prob > 0 else 0
+            bar = '█' * bar_length
+            print(f"  '{word}'".ljust(15) + f"{count:>6}" + f"{prob:>12.4f}  " + bar)
+        
+        if len(sorted_words) > top_k:
+            print(f"  ... and {len(sorted_words) - top_k} more words")
+        
+        # Show that probabilities sum to 1
+        total_prob = sum(p for _, p in next_words.values())
+        print(f"\n[Step 3] Verify probabilities sum to 1:")
+        print(f"  Sum of all P(w | context) = {total_prob:.4f}")
+        
+        print(f"\n{'='*60}")
+        print(f"[RESULT] {len(next_words)} possible next words for context {context}")
+        print(f"{'='*60}")
+    
+    return {w: p for w, (c, p) in next_words.items()}
+
+
+# Aliases
+likelihood_distribution = show_ngram_probabilities
+next_word_probabilities = show_ngram_probabilities
+
+
+def ngram_probability_matrix(counts, context_counts, verbose=True):
+    """
+    Display the full n-gram probability matrix P(word | context).
+    
+    Shows a matrix where:
+    - Rows = contexts (previous n-1 words)
+    - Columns = next words
+    - Cells = P(column | row)
+    
+    Works for bigrams (single word contexts) and trigrams (2-word contexts).
+    
+    Args:
+        counts: n-gram counts from ngram_counts(corpus, n)
+        context_counts: context counts from ngram_counts()
+    
+    Returns:
+        dict: {context: {word: probability}}
+    """
+    # Extract all unique contexts and words
+    contexts = sorted(set(context_counts.keys()), key=lambda x: str(x))
+    words = sorted(set(ng[-1] for ng in counts.keys()))
+    
+    # Determine n from context length
+    sample_ctx = next(iter(context_counts.keys()), ())
+    n = len(sample_ctx) + 1  # context is (n-1)-gram
+    
+    # Build probability matrix
+    prob_matrix = {}
+    for ctx in contexts:
+        ctx_count = context_counts.get(ctx, 0)
+        prob_matrix[ctx] = {}
+        for word in words:
+            ngram = ctx + (word,)
+            ngram_count = counts.get(ngram, 0)
+            if ctx_count > 0:
+                prob_matrix[ctx][word] = ngram_count / ctx_count
+            else:
+                prob_matrix[ctx][word] = 0.0
+    
+    if verbose:
+        print(f"\n{'='*70}")
+        print(f"[{n}-GRAM PROBABILITY MATRIX]")
+        print(f"{'='*70}")
+        print(f"\nFormula: P(word | context) = C(context, word) / C(context)")
+        print(f"\nMatrix layout:")
+        print(f"  - Rows = context ({n-1}-gram)")
+        print(f"  - Columns = next word")
+        print(f"  - Cell = P(next | context)")
+        
+        # Format contexts for display
+        def fmt_ctx(ctx):
+            return " ".join(ctx) if len(ctx) > 1 else ctx[0]
+        
+        context_strs = [fmt_ctx(ctx) for ctx in contexts]
+        
+        # Determine column width
+        col_width = max(8, max(len(w) for w in words) + 1) if words else 8
+        row_label_width = max(len(c) for c in context_strs) + 2 if context_strs else 10
+        
+        # Print header
+        print(f"\n{'':>{row_label_width}}", end="")
+        for word in words:
+            print(f"{word:>{col_width}}", end="")
+        print()
+        
+        # Print separator
+        print(f"{'':>{row_label_width}}" + "-" * (col_width * len(words)))
+        
+        # Print each row
+        for ctx, ctx_str in zip(contexts, context_strs):
+            print(f"{ctx_str:>{row_label_width}}", end="")
+            for word in words:
+                prob = prob_matrix[ctx].get(word, 0)
+                if prob > 0:
+                    print(f"{prob:>{col_width}.2f}", end="")
+                else:
+                    print(f"{'--':>{col_width}}", end="")
+            print()
+        
+        print(f"\n{'='*70}")
+        print(f"[RESULT] {len(contexts)} contexts × {len(words)} words")
+        print(f"{'='*70}")
+    
+    return prob_matrix
+
+
+# Aliases
+probability_matrix = ngram_probability_matrix
+bigram_probability_matrix = ngram_probability_matrix
+
+
 def sequence_probability(tokens, counts, context_counts, n, verbose=True):
     """
-    Calculate probability of a sequence using chain rule.
-    P(w1,w2,...,wn) = ∏ P(wi | wi-n+1...wi-1)
+    Calculate probability of a sentence using the chain rule.
+    
+    Formula: P(w1, w2, ..., wm) = ∏ P(wi | w(i-n+1)...w(i-1))
+    
+    This decomposes the joint probability into a product of conditional probabilities.
     """
     if isinstance(tokens, str):
         tokens = tokens.lower().split()
     
     if verbose:
-        print(f"\n[SEQUENCE PROBABILITY]")
-        print(f"Sequence: {tokens}")
-        print(f"Using {n}-gram model")
+        print(f"\n{'='*60}")
+        print(f"[SENTENCE PROBABILITY (Chain Rule)]")
+        print(f"{'='*60}")
+        print(f"\nFormula: P(w1, w2, ..., wm) = ∏ P(wi | context)")
+        print(f"         Using {n}-gram model")
+        print(f"\nInput sentence: \"{' '.join(tokens)}\"")
     
     # Add padding
-    tokens = ['<s>'] * (n - 1) + tokens + ['</s>']
+    padded = ['<s>'] * (n - 1) + tokens + ['</s>']
     
     if verbose:
-        print(f"[Step 1] Padded sequence: {tokens}")
+        print(f"\n[Step 1] Add start/end markers:")
+        print(f"  Padded: {padded}")
+        print(f"\n[Step 2] Decompose into conditional probabilities:")
     
     log_prob = 0.0
     prob_product = 1.0
+    probabilities = []
     
-    if verbose:
-        print(f"\n[Step 2] Computing probabilities:")
-    
-    for i in range(n - 1, len(tokens)):
-        ngram = tuple(tokens[i - n + 1:i + 1])
+    for i in range(n - 1, len(padded)):
+        ngram = tuple(padded[i - n + 1:i + 1])
+        context = ngram[:-1]
+        word = ngram[-1]
         p = estimate_prob(ngram, counts, context_counts, verbose=False)
+        probabilities.append((context, word, p))
         
         if verbose:
-            context = ngram[:-1]
-            word = ngram[-1]
-            print(f"  P({word}|{context}) = {p:.4f}")
+            print(f"  P('{word}' | {context}) = {p:.4f}")
         
         if p > 0:
             log_prob += math.log(p)
@@ -744,29 +1474,56 @@ def sequence_probability(tokens, counts, context_counts, n, verbose=True):
             log_prob = float('-inf')
             prob_product = 0.0
             if verbose:
-                print(f"  [WARNING] Zero probability encountered!")
+                print(f"  [WARNING] Zero probability! Sentence impossible under this model.")
             break
     
     if verbose:
-        print(f"\n[RESULT] P(sequence) = {prob_product:.6f}")
+        print(f"\n[Step 3] Multiply all probabilities:")
+        prob_strs = [f"{p:.4f}" for _, _, p in probabilities]
+        print(f"  P(sentence) = {' × '.join(prob_strs)}")
+        print(f"  P(sentence) = {prob_product:.10f}")
+        
         if prob_product > 0:
-            print(f"[RESULT] Log probability = {log_prob:.4f}")
+            print(f"\n[Step 4] Log probability (more numerically stable):")
+            print(f"  log P(sentence) = {log_prob:.4f}")
+        
+        print(f"\n{'='*60}")
+        print(f"[RESULT] P(sentence) = {prob_product:.10f}")
+        if prob_product > 0:
+            print(f"[RESULT] Log P(sentence) = {log_prob:.4f}")
+        print(f"{'='*60}")
     
     return prob_product, log_prob
+
+
+# Aliases
+sentence_probability = sequence_probability
+probability_of_sentence = sequence_probability
 
 
 def apply_smoothing(counts, context_counts, vocab_size, k=1, verbose=True):
     """
     Add-k (Laplace) smoothing for n-gram probabilities.
-    P_smooth(w|context) = (count(ngram) + k) / (count(context) + k*V)
+    
+    Formula: P_smooth(w | context) = (C(context, w) + k) / (C(context) + k × V)
+    
+    This prevents zero probabilities for unseen n-grams by adding k to all counts.
+    When k=1, this is called "Laplace smoothing" or "add-one smoothing".
     """
     if verbose:
-        print(f"\n[ADD-{k} SMOOTHING]")
-        print(f"Vocabulary size V = {vocab_size}")
-        print(f"Smoothing constant k = {k}")
+        print(f"\n{'='*60}")
+        print(f"[ADD-{k} SMOOTHING (Laplace Smoothing)]")
+        print(f"{'='*60}")
+        print(f"\nFormula: P_smooth(w | context) = (C(context,w) + k) / (C(context) + k×V)")
+        print(f"\nParameters:")
+        print(f"  k (smoothing constant) = {k}")
+        print(f"  V (vocabulary size) = {vocab_size}")
+        print(f"\nIntuition: Add k 'pseudo-counts' to every possible n-gram")
+        print(f"           This prevents zero probabilities for unseen n-grams")
     
-    def smoothed_prob(ngram):
+    def smoothed_prob(ngram, inner_verbose=True):
         context = ngram[:-1]
+        word = ngram[-1]
         ngram_count = counts.get(ngram, 0)
         context_count = context_counts.get(context, 0)
         
@@ -774,42 +1531,57 @@ def apply_smoothing(counts, context_counts, vocab_size, k=1, verbose=True):
         denominator = context_count + k * vocab_size
         prob = numerator / denominator
         
-        if verbose:
-            word = ngram[-1]
-            print(f"\n  P_smooth({word}|{context}):")
-            print(f"    = (count({ngram}) + {k}) / (count({context}) + {k}*{vocab_size})")
-            print(f"    = ({ngram_count} + {k}) / ({context_count} + {k*vocab_size})")
-            print(f"    = {numerator} / {denominator}")
-            print(f"    = {prob:.6f}")
+        if verbose and inner_verbose:
+            print(f"\n  Computing P_smooth('{word}' | {context}):")
+            print(f"    C({ngram}) = {ngram_count}")
+            print(f"    C({context}) = {context_count}")
+            print(f"    P_smooth = ({ngram_count} + {k}) / ({context_count} + {k}×{vocab_size})")
+            print(f"    P_smooth = {numerator} / {denominator}")
+            print(f"    P_smooth = {prob:.6f}")
         
         return prob
     
     return smoothed_prob
 
 
+# Alias
+laplace_smoothing = apply_smoothing
+
+
 def compute_perplexity(test_tokens, counts, context_counts, n, vocab_size=None, smoothing_k=0, verbose=True):
     """
     Compute perplexity of a test sequence.
-    PP = 2^(-1/N * sum(log2(P(wi|context))))
-    Or equivalently: PP = exp(-1/N * sum(ln(P(wi|context))))
+    
+    Formula: PP = 2^(-1/N × Σ log2 P(wi | context))
+    
+    Perplexity measures how well a language model predicts the test data.
+    Lower perplexity = better model. Can be interpreted as the average
+    number of equally likely choices the model is uncertain between.
     """
     if isinstance(test_tokens, str):
         test_tokens = test_tokens.lower().split()
     
     if verbose:
-        print(f"\n[PERPLEXITY CALCULATION]")
-        print(f"Test sequence: {test_tokens}")
+        print(f"\n{'='*60}")
+        print(f"[PERPLEXITY CALCULATION]")
+        print(f"{'='*60}")
+        print(f"\nFormula: PP = 2^(-1/N × Σ log2 P(wi | context))")
+        print(f"\nInterpretation:")
+        print(f"  - Lower perplexity = model predicts test data better")
+        print(f"  - PP ≈ average branching factor (choices at each step)")
+        print(f"\nTest sequence: \"{' '.join(test_tokens)}\"")
         print(f"Using {n}-gram model")
         if smoothing_k > 0:
-            print(f"With add-{smoothing_k} smoothing")
+            print(f"With add-{smoothing_k} smoothing (V = {vocab_size})")
     
     # Add padding
-    tokens = ['<s>'] * (n - 1) + test_tokens + ['</s>']
-    N = len(tokens) - (n - 1)  # number of predictions
+    padded = ['<s>'] * (n - 1) + test_tokens + ['</s>']
+    N = len(padded) - (n - 1)  # number of predictions
     
     if verbose:
-        print(f"[Step 1] Padded: {tokens}")
-        print(f"[Step 2] Number of predictions N = {N}")
+        print(f"\n[Step 1] Prepare sequence:")
+        print(f"  Padded: {padded}")
+        print(f"  N (number of predictions) = {N}")
     
     log_prob_sum = 0.0
     
@@ -817,23 +1589,27 @@ def compute_perplexity(test_tokens, counts, context_counts, n, vocab_size=None, 
         smooth_fn = apply_smoothing(counts, context_counts, vocab_size, smoothing_k, verbose=False)
     
     if verbose:
-        print(f"\n[Step 3] Computing log probabilities:")
+        print(f"\n[Step 2] Compute log2 probability for each prediction:")
+        print(f"  {'N-gram':<30} {'P':>10} {'log2(P)':>10}")
+        print(f"  {'-'*50}")
     
-    for i in range(n - 1, len(tokens)):
-        ngram = tuple(tokens[i - n + 1:i + 1])
+    for i in range(n - 1, len(padded)):
+        ngram = tuple(padded[i - n + 1:i + 1])
         
         if smoothing_k > 0 and vocab_size:
-            p = smooth_fn(ngram)
+            p = smooth_fn(ngram, inner_verbose=False)
         else:
             p = estimate_prob(ngram, counts, context_counts, verbose=False)
         
-        if verbose:
-            print(f"  {ngram}: P = {p:.6f}, log2(P) = {math.log2(p) if p > 0 else '-inf':.4f}")
-        
         if p > 0:
-            log_prob_sum += math.log2(p)
+            log2_p = math.log2(p)
+            log_prob_sum += log2_p
+            if verbose:
+                print(f"  {str(ngram):<30} {p:>10.6f} {log2_p:>10.4f}")
         else:
             log_prob_sum = float('-inf')
+            if verbose:
+                print(f"  {str(ngram):<30} {'0':>10} {'-inf':>10}")
             break
     
     if log_prob_sum == float('-inf'):
@@ -843,12 +1619,18 @@ def compute_perplexity(test_tokens, counts, context_counts, n, vocab_size=None, 
         perplexity = 2 ** (-avg_log_prob)
     
     if verbose:
-        print(f"\n[Step 4] Sum of log2 probabilities = {log_prob_sum:.4f}")
-        print(f"[Step 5] Average = {log_prob_sum/N:.4f}")
-        print(f"[Step 6] Perplexity = 2^(-avg) = 2^({-log_prob_sum/N:.4f})")
+        print(f"\n[Step 3] Calculate perplexity:")
+        print(f"  Sum of log2(P) = {log_prob_sum:.4f}")
+        print(f"  Average = {log_prob_sum:.4f} / {N} = {log_prob_sum/N:.4f}")
+        print(f"  PP = 2^(-{log_prob_sum/N:.4f}) = 2^{-log_prob_sum/N:.4f}")
+        print(f"  PP = {perplexity:.4f}")
+        
+        print(f"\n{'='*60}")
         print(f"[RESULT] Perplexity = {perplexity:.4f}")
+        print(f"{'='*60}")
     
     return perplexity
+
 
 
 # =============================================================================

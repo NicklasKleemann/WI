@@ -79,7 +79,21 @@ class TestDistanceMetrics:
     def test_edit_distance(self, s1, s2, dist):
         assert wt.edit_distance(s1, s2, verbose=False) == dist
     
-    # binary_distance (Hamming)
+    # levenshtein_distance alias
+    def test_levenshtein_distance_alias(self):
+        assert wt.levenshtein_distance("cat", "car", verbose=False) == 1
+    
+    # hamming_distance (renamed from binary_distance)
+    @pytest.mark.parametrize("s1,s2,dist", [
+        ("karolin", "kathrin", 3),
+        ("1011101", "1001001", 2),
+        ("abc", "abc", 0),
+        ("000", "111", 3),
+    ])
+    def test_hamming_distance(self, s1, s2, dist):
+        assert wt.hamming_distance(s1, s2, verbose=False) == dist
+    
+    # binary_distance alias still works
     @pytest.mark.parametrize("s1,s2,dist", [
         ("karolin", "kathrin", 3),
         ("1011101", "1001001", 2),
@@ -93,7 +107,17 @@ class TestDistanceMetrics:
         with pytest.raises(ValueError):
             wt.binary_distance("ab", "abc", verbose=False)
     
-    # overlap_coefficient (Jaccard)
+    # jaccard_similarity (renamed from overlap_coefficient)
+    @pytest.mark.parametrize("s1,s2,sim", [
+        ({1,2,3}, {2,3,4}, 0.5),
+        ({1,2}, {1,2}, 1.0),
+        ({1,2}, {3,4}, 0.0),
+        ({1}, {1,2,3}, 1/3),
+    ])
+    def test_jaccard_similarity(self, s1, s2, sim):
+        assert wt.jaccard_similarity(s1, s2, verbose=False) == pytest.approx(sim)
+    
+    # overlap_coefficient alias still works
     @pytest.mark.parametrize("s1,s2,sim", [
         ({1,2,3}, {2,3,4}, 0.5),
         ({1,2}, {1,2}, 1.0),
@@ -102,6 +126,39 @@ class TestDistanceMetrics:
     ])
     def test_overlap_coefficient(self, s1, s2, sim):
         assert wt.overlap_coefficient(s1, s2, verbose=False) == pytest.approx(sim)
+    
+    # jaccard_distance (NEW)
+    @pytest.mark.parametrize("s1,s2,dist", [
+        ({1,2,3}, {2,3,4}, 0.5),  # 1 - 0.5 = 0.5
+        ({1,2}, {1,2}, 0.0),      # 1 - 1.0 = 0.0
+        ({1,2}, {3,4}, 1.0),      # 1 - 0.0 = 1.0
+    ])
+    def test_jaccard_distance(self, s1, s2, dist):
+        assert wt.jaccard_distance(s1, s2, verbose=False) == pytest.approx(dist)
+    
+    # euclidean_distance (NEW)
+    @pytest.mark.parametrize("v1,v2,dist", [
+        ([0,0], [3,4], 5.0),       # 3-4-5 triangle
+        ([1,1], [1,1], 0.0),       # same point
+        ([0,0,0], [1,1,1], math.sqrt(3)),  # 3D
+        ([1,2,3], [4,5,6], math.sqrt(27)),
+    ])
+    def test_euclidean_distance(self, v1, v2, dist):
+        assert wt.euclidean_distance(v1, v2, verbose=False) == pytest.approx(dist)
+    
+    def test_euclidean_distance_dicts(self):
+        v1 = {"a": 0, "b": 0}
+        v2 = {"a": 3, "b": 4}
+        assert wt.euclidean_distance(v1, v2, verbose=False) == pytest.approx(5.0)
+    
+    # cosine_similarity (renamed from vector_similarity)
+    @pytest.mark.parametrize("v1,v2,sim", [
+        ([1,0], [1,0], 1.0),
+        ([1,0], [0,1], 0.0),
+        ([1,1], [1,1], 1.0),
+    ])
+    def test_cosine_similarity(self, v1, v2, sim):
+        assert wt.cosine_similarity(v1, v2, verbose=False) == pytest.approx(sim, abs=0.01)
 
 
 # =============================================================================
@@ -119,6 +176,17 @@ class TestVectorSpace:
     def test_term_counts_vocab(self):
         counts, vocab = wt.term_counts(["x y", "y z"], verbose=False)
         assert set(vocab) == {"x", "y", "z"}
+    
+    # bag_of_words alias
+    def test_bag_of_words_alias(self):
+        counts, vocab = wt.bag_of_words(["hello world"], verbose=False)
+        assert counts[0]["hello"] == 1
+        assert counts[0]["world"] == 1
+    
+    # count_vectorizer alias
+    def test_count_vectorizer_alias(self):
+        counts, vocab = wt.count_vectorizer(["the cat sat"], verbose=False)
+        assert "cat" in vocab
     
     # build_td_matrix
     def test_build_td_matrix(self):
@@ -168,6 +236,74 @@ class TestVectorSpace:
         pairs = [("A","B",0.3), ("A","C",0.9), ("B","C",0.6)]
         ranked = wt.rank_pairs(pairs, verbose=False)
         assert [r[2] for r in ranked] == [0.9, 0.6, 0.3]
+
+
+# =============================================================================
+# SECTION 3b: TF, DF, IDF FUNCTIONS (NEW)
+# =============================================================================
+
+class TestTfDfIdf:
+    # compute_tf
+    def test_compute_tf_values(self):
+        tf = wt.compute_tf("the cat sat on the mat", verbose=False)
+        assert tf["the"] == pytest.approx(2/6)  # 2 out of 6 tokens
+        assert tf["cat"] == pytest.approx(1/6)
+    
+    def test_compute_tf_normalized(self):
+        tf = wt.compute_tf("a a a b b c", verbose=False)
+        assert tf["a"] == pytest.approx(3/6)
+        assert tf["b"] == pytest.approx(2/6)
+        assert tf["c"] == pytest.approx(1/6)
+    
+    # term_frequency alias
+    def test_term_frequency_alias(self):
+        tf = wt.term_frequency("hello world", verbose=False)
+        assert tf["hello"] == pytest.approx(0.5)
+        assert tf["world"] == pytest.approx(0.5)
+    
+    # compute_df
+    def test_compute_df_values(self):
+        docs = ["cat dog", "dog bird", "cat bird fish"]
+        df = wt.compute_df(docs, verbose=False)
+        assert df["cat"] == 2   # in 2 docs
+        assert df["dog"] == 2   # in 2 docs
+        assert df["bird"] == 2  # in 2 docs
+        assert df["fish"] == 1  # in 1 doc
+    
+    # document_frequency alias
+    def test_document_frequency_alias(self):
+        docs = ["a b", "b c", "c d"]
+        df = wt.document_frequency(docs, verbose=False)
+        assert df["b"] == 2
+        assert df["c"] == 2
+    
+    # compute_idf
+    def test_compute_idf_values(self):
+        docs = ["a b", "a c", "a d"]  # a in all 3, b,c,d each in 1
+        idf = wt.compute_idf(docs, verbose=False)
+        assert idf["a"] == 0  # log(3/3) = 0
+        assert idf["b"] == pytest.approx(math.log(3))  # log(3/1)
+        assert idf["c"] == pytest.approx(math.log(3))
+        assert idf["d"] == pytest.approx(math.log(3))
+    
+    def test_compute_idf_rare_terms_higher(self):
+        docs = ["common rare1", "common rare2", "common", "common"]
+        idf = wt.compute_idf(docs, verbose=False)
+        assert idf["rare1"] > idf["common"]
+        assert idf["rare2"] > idf["common"]
+    
+    # inverse_document_frequency alias
+    def test_inverse_document_frequency_alias(self):
+        docs = ["x y", "y z"]
+        idf = wt.inverse_document_frequency(docs, verbose=False)
+        assert idf["y"] == 0  # in all docs
+        assert idf["x"] > 0   # only in 1 doc
+    
+    # tfidf alias
+    def test_tfidf_alias(self):
+        tfidf_vecs, vocab, idf = wt.tfidf(["a b", "b c"], verbose=False)
+        assert len(tfidf_vecs) == 2
+        assert "a" in vocab and "b" in vocab and "c" in vocab
 
 
 # =============================================================================
