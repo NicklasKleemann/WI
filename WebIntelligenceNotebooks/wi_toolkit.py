@@ -79,20 +79,55 @@ if NLTK_AVAILABLE:
             '5b': [('ll', 'l')]
         }
         
-        def _find_applied_rule(self, step_name, prev_stem, new_stem):
-            """Find which canonical rule was applied based on the transformation."""
+        def _get_cv_pattern(self, word):
+            """Get consonant-vowel pattern for a word, grouping consecutive C's and V's with borders."""
+            groups = []
+            vowels = 'aeiou'
+            current_type = None
+            current_count = 0
+            
+            for char in word.lower():
+                if not char.isalpha():
+                    continue
+                    
+                char_type = 'V' if char in vowels else 'C'
+                
+                if char_type == current_type:
+                    # Same type, increment count
+                    current_count += 1
+                else:
+                    # Different type, save previous group if exists
+                    if current_type:
+                        groups.append(f"[{current_type * current_count}]")
+                    current_type = char_type
+                    current_count = 1
+            
+            # Add the last group
+            if current_type:
+                groups.append(f"[{current_type * current_count}]")
+            
+            return ''.join(groups)
+        
+        def _find_applied_rule_with_stem(self, step_name, prev_stem, new_stem):
+            """Find which canonical rule was applied and return the stem that was measured."""
             if prev_stem == new_stem:
-                return None
+                return None, None
                 
             rules = self.STEP_RULES.get(step_name, [])
             for old_suffix, new_suffix in rules:
                 # Check if prev_stem ends with old_suffix and new_stem ends with new_suffix
                 if prev_stem.endswith(old_suffix):
-                    # Verify the transformation matches
+                    # The stem is what remains after removing the old suffix
                     base = prev_stem[:-len(old_suffix)] if old_suffix else prev_stem
                     expected_new = base + new_suffix
                     if expected_new == new_stem:
-                        return f"(m>0) {old_suffix.upper()} -> {new_suffix.upper() if new_suffix else '∅'}"
+                        # Determine the condition (m>0 for steps 2,3; m>1 for step 4)
+                        if step_name == '4':
+                            condition = "m>1"
+                        else:
+                            condition = "m>0"
+                        rule_str = f"({condition}) {old_suffix.upper()} -> {new_suffix.upper() if new_suffix else '∅'}"
+                        return rule_str, base  # Return the stem that was measured
             
             # Fallback: deduce rule from suffix change
             i = 0
@@ -101,7 +136,8 @@ if NLTK_AVAILABLE:
                 i += 1
             old_suffix = prev_stem[i:]
             new_suffix = new_stem[i:]
-            return f"{old_suffix.upper()} -> {new_suffix.upper() if new_suffix else '∅'}"
+            base = prev_stem[:i]
+            return f"{old_suffix.upper()} -> {new_suffix.upper() if new_suffix else '∅'}", base
         
         def stem(self, word):
             stem = word.lower()
@@ -109,15 +145,24 @@ if NLTK_AVAILABLE:
             
             def _apply_step(name, func, current_stem):
                 prev = current_stem
-                m = self._measure(current_stem) if hasattr(self, '_measure') else "?"
-                
                 new_stem = func(current_stem)
                 
                 if new_stem != prev:
-                    rule = self._find_applied_rule(name, prev, new_stem)
-                    print(f"Step {name:<3} : {prev:<15} -> {new_stem:<15} (m={m}, Rule: {rule})")
+                    rule, measured_stem = self._find_applied_rule_with_stem(name, prev, new_stem)
+                    if measured_stem:
+                        # Show CV pattern and m of the STEM that was measured for the condition
+                        cv = self._get_cv_pattern(measured_stem)
+                        m = self._measure(measured_stem) if hasattr(self, '_measure') else "?"
+                        print(f"Step {name:<3} : {prev:<15} -> {new_stem:<15} (Rule: {rule}, measured stem: {measured_stem} {cv} m={m})")
+                    else:
+                        cv = self._get_cv_pattern(new_stem)
+                        m = self._measure(new_stem) if hasattr(self, '_measure') else "?"
+                        print(f"Step {name:<3} : {prev:<15} -> {new_stem:<15} (Rule: {rule}, CV: {cv} m={m})")
                 else:
-                    print(f"Step {name:<3} : {prev:<15} -> {new_stem:<15} (m={m})")
+                    # No change - show CV pattern of current stem
+                    cv = self._get_cv_pattern(new_stem)
+                    m = self._measure(new_stem) if hasattr(self, '_measure') else "?"
+                    print(f"Step {name:<3} : {prev:<15} -> {new_stem:<15} (CV: {cv} m={m})")
                 return new_stem
 
             stem = _apply_step("1a", self._step1a, stem)

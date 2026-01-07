@@ -163,7 +163,7 @@ def example_perplexity():
 
 def example_stemming():
     """Porter Stemmer - reduce words to their stem"""
-    words = ["running", "jumped", "happiness", "substitutional"]
+    words = ["Rationalization"]
     for word in words:
         wi.reduce_stem(word)
 
@@ -388,7 +388,7 @@ def main():
     
     # === TF-IDF ===
     # example_tf()
-    example_df()
+    # example_df()
     # example_idf()
     # example_tfidf()
     # example_bag_of_words()
@@ -461,7 +461,7 @@ def selfstudy():
     # =========================================================================
     # SELF-STUDY I: Text Preprocessing & Zipf's Law
     # =========================================================================
-    # example_stemming()          
+    example_stemming()          
     # example_preprocessing()     
     
     # =========================================================================
@@ -492,5 +492,5 @@ def selfstudy():
     # example_find_nearest()
 
 if __name__ == "__main__":
-    main()
-    # selfstudy()  # Uncomment to see self-study allowed functions
+    # main()
+    selfstudy()  # Uncomment to see self-study allowed functions
