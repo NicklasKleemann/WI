@@ -26,12 +26,15 @@ try:
     NLTK_AVAILABLE = True
 except ImportError:
     NLTK_AVAILABLE = False
+    nltk = None  # type: ignore
+    PorterStemmer = None  # type: ignore
+    nltk_stopwords = None
     print("[Warning] Package not installed. Using fallback implementations.")
 
 
 def nltk_setup():
     """Download required NLTK data if not already present."""
-    if NLTK_AVAILABLE:
+    if NLTK_AVAILABLE and nltk is not None and nltk_stopwords is not None:
         try:
             nltk_stopwords.words('english')
         except LookupError:
@@ -45,11 +48,11 @@ def nltk_setup():
 
 
 # Initialize NLTK data
-if NLTK_AVAILABLE:
+if NLTK_AVAILABLE and PorterStemmer is not None:
     nltk_setup()
     _stemmer = PorterStemmer()
     
-    class DebugPorterStemmer(PorterStemmer):
+    class DebugPorterStemmer(PorterStemmer):  # type: ignore
         """
         An extended PorterStemmer that prints the intermediate steps of the stemming algorithm.
         """
@@ -139,8 +142,8 @@ if NLTK_AVAILABLE:
             base = prev_stem[:i]
             return f"{old_suffix.upper()} -> {new_suffix.upper() if new_suffix else '∅'}", base
         
-        def stem(self, word):
-            stem = word.lower()
+        def stem(self, word, to_lowercase=True):  # type: ignore
+            stem = word.lower() if to_lowercase else word
             print(f"Original: {word}")
             
             def _apply_step(name, func, current_stem):
@@ -178,9 +181,10 @@ if NLTK_AVAILABLE:
             return stem
             
     _debug_stemmer = DebugPorterStemmer()
-    _stopwords = set(nltk_stopwords.words('english'))
+    _stopwords = set(nltk_stopwords.words('english')) if nltk_stopwords is not None else set()
 else:
     _stemmer = None
+    _debug_stemmer = None  # type: ignore
     _stopwords = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
                   'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been'}
 
@@ -258,7 +262,10 @@ def reduce_stem(word, verbose=True):
     if NLTK_AVAILABLE and _stemmer:
         if verbose:
             # Use the debug stemmer to show all steps
-            stem = _debug_stemmer.stem(word)
+            if _debug_stemmer is not None:
+                stem = _debug_stemmer.stem(word)
+            else:
+                stem = _stemmer.stem(word)
         else:
             stem = _stemmer.stem(word)
             
@@ -1630,6 +1637,7 @@ def compute_perplexity(test_tokens, counts, context_counts, n, vocab_size=None, 
     
     log_prob_sum = 0.0
     
+    smooth_fn = None
     if smoothing_k > 0 and vocab_size:
         smooth_fn = apply_smoothing(counts, context_counts, vocab_size, smoothing_k, verbose=False)
     
@@ -1641,7 +1649,7 @@ def compute_perplexity(test_tokens, counts, context_counts, n, vocab_size=None, 
     for i in range(n - 1, len(padded)):
         ngram = tuple(padded[i - n + 1:i + 1])
         
-        if smoothing_k > 0 and vocab_size:
+        if smooth_fn is not None:
             p = smooth_fn(ngram, inner_verbose=False)
         else:
             p = estimate_prob(ngram, counts, context_counts, verbose=False)
@@ -2200,11 +2208,12 @@ def clustering_coefficient(adj_matrix, labels=None, verbose=True):
         neighbors = [j for j in range(n) if adj_matrix[i][j] > 0]
         degree = len(neighbors)
         
+        edges_between = 0
+        max_edges = 0.0
         if degree < 2:
             cc = 0.0
         else:
             # Count edges between neighbors
-            edges_between = 0
             for j in range(len(neighbors)):
                 for k in range(j + 1, len(neighbors)):
                     if adj_matrix[neighbors[j]][neighbors[k]] > 0:
